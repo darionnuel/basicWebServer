@@ -1,7 +1,7 @@
 {
   "name": "basicwebserver",
   "version": "1.0.0",
-  "description": "HNG11 stage 1 task",
+  "description": "This web server sends a response which contains clientIP, location and a greeting",
   "main": "server.js",
   "scripts": {
     "start": "nodemon server.js"
