@@ -7,6 +7,9 @@ const app = express();
 
 const port = process.env.PORT || 3000;
 
+// Middleware for parsing JSON bodies
+app.use(express.json());
+
 // Middleware for logging errors
 app.use((err, req, res, next) => {
   console.error(`${err.message || err}`);
@@ -15,7 +18,7 @@ app.use((err, req, res, next) => {
 
 // function to get address using IP
 const getAddress = async (ip) => {
-  // to handle localhost seperately
+  // handle localhost seperately
   if (ip === '127.0.0.1' || ip === '::1') {
     return { city: 'localhost' };
   }
@@ -24,7 +27,6 @@ const getAddress = async (ip) => {
     const { data } = await axios.get(`http://ip-api.com/json/${ip}`);
     return data;
   } catch (err) {
-    console.error(`Error fetching location data: ${err.message}`);
     throw new Error('Could not fetch location data');
   }
 };
@@ -36,13 +38,30 @@ const getTemp = async (city) => {
   if (!key) throw new Error('API key for OpenWeatherMap is missing');
 
   try {
+    // Configure Axios to bypass proxy if needed
+    const axiosInstance = axios.create({
+      baseURL: 'http://api.openweathermap.org/data/2.5/',
+      proxy: false, // Disable proxy
+    });
+
     // using the OpenWeatherMap api
-    const { data } = await axios.get(
-      `http://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${key}&units=metric`
-    );
+    const { data } = await axiosInstance.get(`weather`, {
+      params: {
+        q: city,
+        appid: key,
+        units: 'metric',
+      },
+    });
     return data.main.temp;
   } catch (err) {
-    console.error(`Error fetching temperature data: ${err.message}`);
+    if (err.response && err.response.data && err.response.data.cod === '404') {
+      console.error('City not found:', city);
+      throw new Error(`City not found: ${city}`);
+    }
+    console.error(
+      'Error fetching temperature data:',
+      err.response?.data || err.message || err
+    );
     throw new Error('Unable to fetch temperature');
   }
 };
@@ -52,10 +71,17 @@ app.get('/api/hello', async (req, res, next) => {
   try {
     const visitorName = req.query.visitor_name || 'Guest';
     const clientIp =
-      req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+      req.headers['x-forwarded-for']?.split(',').shift() ||
+      req.connection.remoteAddress;
 
     const location = await getAddress(clientIp);
-    const city = location.city || 'Unknown';
+    let city = location.city || 'Unknown';
+
+    // Use a default city if 'Unknown' or 'localhost'
+    if (city === 'Unknown' || city === 'localhost') {
+      city = 'New York'; // You can choose any default city
+    }
+
     const temperature = await getTemp(city);
 
     const greeting = `Hello, ${visitorName}!, the temperature is ${temperature} degrees Celsius in ${city}`;
